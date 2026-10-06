@@ -71,6 +71,15 @@ def shift_srt(text, delta):
         out.append(line)
     return "\n".join(out)
 
+try:
+    _fnt = get_font()
+    if _fnt.exists():
+        st.caption(f"🔤 Font: {_fnt.name} ({_fnt.stat().st_size//1024} KB) ✅")
+    else:
+        st.caption("🔤 Font file မတွေ့ဘူး ❌")
+except Exception as e:
+    st.caption(f"🔤 Font download error: {str(e)[:120]}")
+
 video = st.file_uploader("🎬 Video တင်ပါ", type=["mp4", "mov", "mkv", "webm"])
 
 srt_up = st.file_uploader("📄 Myanmar SRT file တင်ပါ", type=["srt"])
@@ -89,74 +98,3 @@ srt_text = st.text_area("SRT စာသား", value=srt_prefill, height=180,
 st.markdown("**Eng / China စာတန်း ဖျောက်နည်း**")
 method = st.radio("", ["Blur — ဝါးမယ် (မူရင်း frame အပြည့်ကျန်တယ်)",
                        "Crop — အောက်ပိုင်း ဖြတ်မယ်",
-                       "မဖျောက်ဘူး"], label_visibility="collapsed")
-
-area_h = 15
-if not method.startswith("မဖျောက်"):
-    area_h = st.slider("ဖျောက်မယ့် အောက်ပိုင်း အမြင့် (%)", 5, 30, 15)
-
-fsize = st.slider("မြန်မာစာတန်း အရွယ်အစား", 14, 36, 22)
-color = st.color_picker("🎨 စာတန်း အရောင်", "#FFFFFF")
-r, g, b = color[1:3], color[3:5], color[5:7]
-ass_color = f"&H00{b}{g}{r}".upper()
-zg_fix = st.checkbox("🔄 Zawgyi စာသားဆို Unicode သို့ auto-ပြောင်းမယ်", value=True)
-shift = st.slider("⏱️ စာတန်း အချိန် ရွှေ့ (စက္ကန့်)", -5.0, 5.0, 0.0, 0.5,
-    help="SRT အချိန်တွေ တစ်ဆက်တည်း စောနေရင် + ၊ နောက်ကျနေရင် − ရွှေ့ပါ")
-
-if st.button("🎬 Video ထုတ်မယ်", type="primary"):
-    if not video:
-        st.error("Video တင်ပေးပါ။"); st.stop()
-    if not srt_text.strip() or "-->" not in srt_text:
-        st.error("SRT စာသား မှန်မှန်ထည့်ပေးပါ။"); st.stop()
-
-    if zg_fix:
-        det, conv, err = get_zgtools()
-        if det is None:
-            st.warning("⚠️ Zawgyi auto-convert အလုပ်မလုပ်ဘူး — requirements.txt မှာ "
-                       "package တွေ လိုနေတယ်။ requirements.txt အသစ်တင်ပြီး Reboot လုပ်ပါ।")
-        elif det.get_zawgyi_probability(srt_text) > 0.5:
-            srt_text = conv.convert(srt_text, "zawgyi", "unicode")
-            st.info("🔄 Zawgyi တွေ့လို့ Unicode သို့ ပြောင်းပေးလိုက်ပြီ ✓")
-        else:
-            st.caption("SRT က Unicode အမှန် — မပြောင်းဘူး")
-
-    get_font()
-    tmp = tempfile.mkdtemp()
-    vp = os.path.join(tmp, "in.mp4")
-    with open(vp, "wb") as f:
-        f.write(video.read())
-    sp = os.path.join(tmp, "subs.srt")
-    srt_out = shift_srt(srt_text, shift) if abs(shift) > 0.01 else srt_text
-    with open(sp, "w", encoding="utf-8") as f:
-        f.write(srt_out)
-    out = os.path.join(tmp, "out.mp4")
-
-    vfs = []
-    h = area_h / 100
-    if method.startswith("Blur"):
-        vfs.append(f"split[a][b];[a]crop=iw:ih*{h}:0:ih*{1-h},boxblur=12[bb];[b][bb]overlay=0:H-h")
-    elif method.startswith("Crop"):
-        vfs.append(f"crop=iw:ih*{1-h}")
-    vfs.append(
-        f"subtitles={sp}:fontsdir={FD}:force_style='FontName={FONT_NAME},"
-        f"FontSize={fsize},PrimaryColour={ass_color},OutlineColour=&H80000000,"
-        f"BorderStyle=1,Outline=2,Alignment=2,MarginV=30'")
-
-    cmd = [ff, "-y", "-v", "error", "-i", vp,
-           "-vf", ",".join(vfs),
-           "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
-           "-c:a", "aac", out]
-    try:
-        with st.spinner("Video ထုတ်နေတယ်... (ခနစောင့်ပါ)"):
-            subprocess.run(cmd, check=True, stdin=subprocess.DEVNULL,
-                           capture_output=True, text=True, timeout=1200)
-        st.success("ပြီးပြီ! ✓")
-        st.video(out)
-        with open(out, "rb") as f:
-            st.download_button("⬇️ Video ဒေါင်းမယ်", f,
-                               file_name="myanmar_subtitled.mp4", mime="video/mp4")
-    except subprocess.TimeoutExpired:
-        st.error("Video ကြာလွန်းလို့ ရပ်လိုက်တယ်။ Video အတိုနဲ့ စမ်းကြည့်ပါ။")
-    except subprocess.CalledProcessError as ex:
-        st.error("Video ထုတ်ရာမှာ အမှားတက်တယ်:")
-        st.code((ex.stderr or "unknown")[-1500:])
