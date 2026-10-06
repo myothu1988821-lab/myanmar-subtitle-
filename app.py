@@ -34,6 +34,15 @@ def get_font():
         urllib.request.urlretrieve(FU, d)
     return d
 
+@st.cache_resource
+def get_zgtools():
+    try:
+        from myanmartools import ZawgyiDetector
+        from myanmar import converter
+        return ZawgyiDetector(), converter
+    except Exception:
+        return None, None
+
 def count_segs(t):
     return len(re.findall(r"-->", t))
 
@@ -76,6 +85,7 @@ if not method.startswith("မဖျောက်"):
     area_h = st.slider("ဖျောက်မယ့် အောက်ပိုင်း အမြင့် (%)", 5, 30, 15)
 
 fsize = st.slider("မြန်မာစာတန်း အရွယ်အစား", 14, 36, 22)
+zg_fix = st.checkbox("🔄 Zawgyi စာသားဆို Unicode သို့ auto-ပြောင်းမယ်", value=True)
 shift = st.slider("⏱️ စာတန်း အချိန် ရွှေ့ (စက္ကန့်)", -5.0, 5.0, 0.0, 0.5,
     help="SRT အချိန်တွေ တစ်ဆက်တည်း စောနေရင် + ၊ နောက်ကျနေရင် − ရွှေ့ပါ")
 
@@ -85,43 +95,6 @@ if st.button("🎬 Video ထုတ်မယ်", type="primary"):
     if not srt_text.strip() or "-->" not in srt_text:
         st.error("SRT စာသား မှန်မှန်ထည့်ပေးပါ။"); st.stop()
 
-    get_font()
-    tmp = tempfile.mkdtemp()
-    vp = os.path.join(tmp, "in.mp4")
-    with open(vp, "wb") as f:
-        f.write(video.read())
-    sp = os.path.join(tmp, "subs.srt")
-    srt_out = shift_srt(srt_text, shift) if abs(shift) > 0.01 else srt_text
-    with open(sp, "w", encoding="utf-8") as f:
-        f.write(srt_out)
-    out = os.path.join(tmp, "out.mp4")
-
-    vfs = []
-    h = area_h / 100
-    if method.startswith("Blur"):
-        vfs.append(f"split[a][b];[a]crop=iw:ih*{h}:0:ih*{1-h},boxblur=12[bb];[b][bb]overlay=0:H-h")
-    elif method.startswith("Crop"):
-        vfs.append(f"crop=iw:ih*{1-h}")
-    vfs.append(
-        f"subtitles={sp}:fontsdir={FD}:force_style='FontName=Noto Sans Myanmar,"
-        f"FontSize={fsize},PrimaryColour=&H00FFFFFF,OutlineColour=&H80000000,"
-        f"BorderStyle=1,Outline=2,Alignment=2,MarginV=30'")
-
-    cmd = [ff, "-y", "-v", "error", "-i", vp,
-           "-vf", ",".join(vfs),
-           "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
-           "-c:a", "aac", out]
-    try:
-        with st.spinner("Video ထုတ်နေတယ်... (ခနစောင့်ပါ)"):
-            subprocess.run(cmd, check=True, stdin=subprocess.DEVNULL,
-                           capture_output=True, text=True, timeout=1200)
-        st.success("ပြီးပြီ! ✓")
-        st.video(out)
-        with open(out, "rb") as f:
-            st.download_button("⬇️ Video ဒေါင်းမယ်", f,
-                               file_name="myanmar_subtitled.mp4", mime="video/mp4")
-    except subprocess.TimeoutExpired:
-        st.error("Video ကြာလွန်းလို့ ရပ်လိုက်တယ်။ Video အတိုနဲ့ စမ်းကြည့်ပါ။")
-    except subprocess.CalledProcessError as ex:
-        st.error("Video ထုတ်ရာမှာ အမှားတက်တယ်:")
-        st.code((ex.stderr or "unknown")[-1500:])
+    if zg_fix:
+        det, conv = get_zgtools()
+        if det is not None and det.get_zawgyi_probability(srt_text) > 0.5:
