@@ -1,2 +1,4 @@
 streamlit
 imageio-ffmpeg
+python-myanmar
+git+https://github.com/google/myanmar-tools.git#subdirectory=clients/python
