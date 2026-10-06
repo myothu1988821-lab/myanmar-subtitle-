@@ -39,9 +39,9 @@ def get_zgtools():
     try:
         from myanmartools import ZawgyiDetector
         from myanmar import converter
-        return ZawgyiDetector(), converter
-    except Exception:
-        return None, None
+        return ZawgyiDetector(), converter, ""
+    except Exception as e:
+        return None, None, str(e)[:200]
 
 def count_segs(t):
     return len(re.findall(r"-->", t))
@@ -96,10 +96,15 @@ if st.button("🎬 Video ထုတ်မယ်", type="primary"):
         st.error("SRT စာသား မှန်မှန်ထည့်ပေးပါ။"); st.stop()
 
     if zg_fix:
-        det, conv = get_zgtools()
-        if det is not None and det.get_zawgyi_probability(srt_text) > 0.5:
+        det, conv, err = get_zgtools()
+        if det is None:
+            st.warning("⚠️ Zawgyi auto-convert အလုပ်မလုပ်ဘူး — requirements.txt မှာ "
+                       "package တွေ လိုနေတယ်။ requirements.txt အသစ်တင်ပြီး Reboot လုပ်ပါ।")
+        elif det.get_zawgyi_probability(srt_text) > 0.5:
             srt_text = conv.convert(srt_text, "zawgyi", "unicode")
             st.info("🔄 Zawgyi တွေ့လို့ Unicode သို့ ပြောင်းပေးလိုက်ပြီ ✓")
+        else:
+            st.caption("SRT က Unicode အမှန် — မပြောင်းဘူး")
 
     get_font()
     tmp = tempfile.mkdtemp()
